@@ -60,6 +60,7 @@ private:
   void computeCovariance();
 
   double resolution_;
+  double step_;
   int max_level_;
   boost::shared_ptr<std::vector<Nodemap>> octree_;
   Nodemap node_map_;

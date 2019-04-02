@@ -50,6 +50,8 @@
         "typeindex": "cpp",
         "typeinfo": "cpp",
         "utility": "cpp",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "geometry": "cpp",
+        "forward_list": "cpp"
     }
 }

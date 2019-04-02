@@ -28,6 +28,7 @@
 	
 
 #include "Octree.h"
+#include "ransac.h"
 
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
@@ -59,7 +60,6 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
     auto covariance = node->covariance;
 
     Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
-
     if (std::isnan(svd.singularValues().x()) ||
         std::isnan(svd.singularValues().y()) ||
         std::isnan(svd.singularValues().z()))
@@ -75,11 +75,14 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
     {
         for (auto cnode : node->cnode)
         {
-                createMarker(cnode, marker_array);
-                return;
-            
+            createMarker(cnode, marker_array);
+            return;
         }
     }
+    if(node->point_idx.size() < 30)
+        return;
+
+    std::cout<<"level:"<<level<<" cnode:"<<node->cnode.size()<<std::endl;
 
     Eigen::Matrix3d R(svd.matrixU());
     R.col(0).normalize();
@@ -140,14 +143,45 @@ int main(int argc, char **argv)
     pcl::copyPointCloud(*cloud_raw, *cloud);
     GlobalPlan::Octree<pcl::PointXYZ> octree;//(voxel_ids, cloud);
     octree.setInput(cloud);
-    auto nodes = octree.getLevelNode(1);
+    auto nodes = octree.getLevelNode(3);
 
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
     visualization_msgs::MarkerArray marker_array;
+    int l = 0;
+    for (auto nn : nodes)
+    {
+        //std::cout<<nn->point_idx.size()<<std::endl;
+        //l++;
+        //if(l%2 != 0)
+        //    continue;
+        //for(n : nn->point_idx){
+        //    cloud_map->push_back(cloud->points[n]);
+        ////auto p = pcl::PointXYZ(n->centroid(0),n->centroid(1),n->centroid(2));
+        ////cloud_map->push_back(p);
+        //}
+        //createMarker(nn, marker_array);
+    }
+    std::cout<<"try ransac!\n"<<std::endl;
     for (auto n : nodes)
     {
-        createMarker(n, marker_array);
+        std::cout<<n->point_idx.size()<<std::endl;
+        if(n->point_idx.size() < 100)
+            continue;
+        auto plane = GlobalPlan::RansacPlane<pcl::PointXYZ>(cloud, n->point_idx);
+
+        for (auto i : n->point_idx)
+        {
+            double x = cloud->points[i].x;
+            double y = cloud->points[i].y;
+            double a = plane[0];
+            double b = plane[1];
+            double c = plane[2];
+            double d = plane[3];
+            double z = -(a * x + b * y + d) / c;
+            auto p = pcl::PointXYZ(x, y, z);
+            cloud_map->push_back(p);
+        }
     }
 
     sensor_msgs::PointCloud2 output;

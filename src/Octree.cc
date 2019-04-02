@@ -18,14 +18,15 @@ namespace GlobalPlan
 template <typename PointSourceType>
 Octree<PointSourceType>::Octree()
 {
+	step_ = 1.5;
 	resolution_ = 0.4;
-	max_level_ = 2;
+	max_level_ = 4;
 	octree_.reset();
 }
 template <typename PointSourceType>
 Eigen::Vector3i Octree<PointSourceType>::getNodeIdxFromPoint(PointSourceType point, int level)
 {
-	double resolution = resolution_ * std::pow(3, level);
+	double resolution = resolution_ * std::pow(step_, level);
 	double x = std::round(point.x / resolution);
 	double y = std::round(point.y / resolution);
 	double z = std::round(point.z / resolution);
@@ -73,9 +74,9 @@ void Octree<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceType>
 		{
 			Eigen::Vector3i cidx = m.first;
 			OctreeNode *cnode = m.second;
-			Eigen::Vector3i pidx = Eigen::Vector3i(std::round(cidx(0) / 2),
-												   std::round(cidx(1) / 2),
-												   std::round(cidx(2) / 2));
+			Eigen::Vector3i pidx = Eigen::Vector3i(std::round(cidx(0) / step_),
+												   std::round(cidx(1) / step_),
+												   std::round(cidx(2) / step_));
 
 
 			if (nodemap.find(pidx) == nodemap.end())
@@ -128,8 +129,15 @@ void Octree<PointSourceType>::computeCovariance()
 			auto &node = m.second;
 			Eigen::Vector4d centroid = Eigen::Vector4d(node->centroid(0), node->centroid(1), node->centroid(2), 1);
 			Eigen::Matrix3d covariance;
+
 			pcl::computeCovarianceMatrixNormalized(*cloud_, node->point_idx, centroid, covariance);
 			node->covariance = covariance;
+			//for(auto i : node->point_idx){
+			//	printf("%5.3f, %5.3f, %5.3f\n",cloud_->points[i].x,cloud_->points[i].y,cloud_->points[i].z);
+			//}
+			//std::cout<<"level:"<<level<<std::endl;
+			//std::cout<<covariance<<std::endl;
+			
 		}
 	}
 	
