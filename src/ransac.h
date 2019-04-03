@@ -98,7 +98,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 			max_score = score; 
 			best_plane = plane;
 		}
-
+		std::cout<<"!!!new number:"<<inliner.size()<<std::endl;
 		for (auto i : idx)
 		{
 			auto &p = point_cloud->points[i];
@@ -107,6 +107,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 			if(dist < 0.02)
 				inliner.push_back(i);
 		}
+		std::cout<<"!!!new number:"<<inliner.size()<<std::endl;
 	}
 	return best_plane;
 }
@@ -116,6 +117,7 @@ Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::P
 {
 	std::vector<int> inliner;
 	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliner);
+	std::cout<<"old number:"<<node->point_idx.size()<<std::endl;
 	Eigen::Vector4d centroid;
 	pcl::compute3DCentroid(*point_cloud, inliner, centroid);
 	Eigen::Matrix3d covariance;
@@ -124,6 +126,8 @@ Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::P
 	node->point_idx = inliner;
 	node->centroid = centroid3d;
 	node->covariance = covariance;
+	std::cout<<"new number:"<<inliner.size()<<std::endl;
+	
 }
 
 } // namespace GlobalPlan

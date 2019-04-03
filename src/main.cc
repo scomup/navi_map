@@ -47,7 +47,7 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LoadPcdFile(std::string file_name)
 }
 pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
-void createMarker(GlobalPlan::OctreeNode *node,
+bool createMarker(GlobalPlan::OctreeNode *node,
                   const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
                   visualization_msgs::MarkerArray &marker_array)
 {
@@ -61,7 +61,7 @@ void createMarker(GlobalPlan::OctreeNode *node,
         std::isnan(svd.singularValues().y()) ||
         std::isnan(svd.singularValues().z()))
     {
-        return;
+        return false;
     }
 
     bool isplane = svd.singularValues().z() / svd.singularValues().y() < 0.2;
@@ -76,7 +76,7 @@ void createMarker(GlobalPlan::OctreeNode *node,
     //    }
     //}
     if (node->point_idx.size() < 200)
-        return;
+        return false;
 
     if (!good)
     {
@@ -138,6 +138,9 @@ void createMarker(GlobalPlan::OctreeNode *node,
         marker.color.a = 0.3f;
     }
     marker_array.markers.push_back(marker);
+    if(!good)
+    return true;
+    return false;
 }
 
 int main(int argc, char **argv)
@@ -158,7 +161,8 @@ int main(int argc, char **argv)
     int l = 0;
     for (auto nn : nodes)
     {
-        createMarker(nn, cloud, marker_array);
+        if(createMarker(nn, cloud, marker_array))
+        break;
     }
     /*
     std::cout<<"try ransac!\n"<<std::endl;
