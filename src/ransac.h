@@ -18,7 +18,7 @@ namespace GlobalPlan
 
 template <typename FloatType>
 FloatType GetDistPlaneToPoint(const Eigen::Matrix<FloatType, 4, 1> &plane,
-					const Eigen::Matrix<FloatType, 3, 1> &point)
+							  const Eigen::Matrix<FloatType, 3, 1> &point)
 {
 	FloatType x = point.x();
 	FloatType y = point.y();
@@ -27,7 +27,7 @@ FloatType GetDistPlaneToPoint(const Eigen::Matrix<FloatType, 4, 1> &plane,
 	FloatType b = plane[1];
 	FloatType c = plane[2];
 	FloatType d = plane[3];
-	return (a * x + b * y + c * z + d) / std::sqrt(a * a + b * b + c * c);
+	return std::abs(a * x + b * y + c * z + d) / std::sqrt(a * a + b * b + c * c);
 }
 
 template <typename FloatType>
@@ -43,7 +43,6 @@ Eigen::Matrix<FloatType, 4, 1> FindPlane(const Eigen::Matrix<FloatType, 3, 1> po
 	return Eigen::Matrix<FloatType, 4, 1>(a, b, c, -(a * x + b * y + c * z));
 }
 
-
 void getRondomNum(size_t l, size_t &a, size_t &b, size_t &c)
 {
 	while (true)
@@ -56,9 +55,9 @@ void getRondomNum(size_t l, size_t &a, size_t &b, size_t &c)
 	}
 }
 template <typename PointSourceType>
-Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int>& idx)
+Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx)
 {
-	size_t s =  idx.size();
+	size_t s = idx.size();
 	size_t a;
 	size_t b;
 	size_t c;
@@ -69,7 +68,7 @@ Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::
 	auto ea = Eigen::Vector3d(pa.x, pa.y, pa.z);
 	auto eb = Eigen::Vector3d(pb.x, pb.y, pb.z);
 	auto ec = Eigen::Vector3d(pc.x, pc.y, pc.z);
-	auto o = (ea + eb + ec)/3;
+	auto o = (ea + eb + ec) / 3;
 	auto v0 = eb - ea;
 	auto v1 = ec - ea;
 	auto normal = v0.cross(v1);
@@ -78,7 +77,7 @@ Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::
 }
 
 template <typename PointSourceType>
-Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx, std::vector<int>& inliner)
+Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx, std::vector<int> &inliner)
 {
 	double max_score = 0;
 	Eigen::Vector4d best_plane;
@@ -89,26 +88,25 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 		for (auto i : idx)
 		{
 			auto &p = point_cloud->points[i];
-			auto pp = Eigen::Vector3d(p.x, p.y, p.z); 
+			auto pp = Eigen::Vector3d(p.x, p.y, p.z);
 			double dist = GetDistPlaneToPoint<double>(plane, pp);
-			score += exp(-std::abs(dist)*20);
-			
+			score += exp(-std::abs(dist) * 5);
 		}
-		if(score > max_score){
-			max_score = score; 
+		if (score > max_score)
+		{
+			max_score = score;
 			best_plane = plane;
 		}
-		std::cout<<"!!!new number:"<<inliner.size()<<std::endl;
-		for (auto i : idx)
-		{
-			auto &p = point_cloud->points[i];
-			auto pp = Eigen::Vector3d(p.x, p.y, p.z); 
-			double dist = GetDistPlaneToPoint<double>(best_plane, pp);
-			if(dist < 0.02)
-				inliner.push_back(i);
-		}
-		std::cout<<"!!!new number:"<<inliner.size()<<std::endl;
 	}
+	for (auto i : idx)
+	{
+		auto &p = point_cloud->points[i];
+		auto pp = Eigen::Vector3d(p.x, p.y, p.z);
+		double dist = GetDistPlaneToPoint<double>(best_plane, pp);
+		if (dist < 0.1)
+			inliner.push_back(i);
+	}
+
 	return best_plane;
 }
 
@@ -117,7 +115,7 @@ Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::P
 {
 	std::vector<int> inliner;
 	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliner);
-	std::cout<<"old number:"<<node->point_idx.size()<<std::endl;
+	std::cout << "old number:" << node->point_idx.size() << std::endl;
 	Eigen::Vector4d centroid;
 	pcl::compute3DCentroid(*point_cloud, inliner, centroid);
 	Eigen::Matrix3d covariance;
@@ -126,8 +124,7 @@ Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::P
 	node->point_idx = inliner;
 	node->centroid = centroid3d;
 	node->covariance = covariance;
-	std::cout<<"new number:"<<inliner.size()<<std::endl;
-	
+	std::cout << "new number:" << inliner.size() << std::endl;
 }
 
 } // namespace GlobalPlan

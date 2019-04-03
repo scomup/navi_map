@@ -19,17 +19,17 @@ template <typename PointSourceType>
 Octree<PointSourceType>::Octree()
 {
 	step_ = 2;
-	resolution_ = 0.45;
-	max_level_ = 3;
+	resolution_ = 0.6;
+	max_level_ = 2;
 	octree_.reset();
 }
 template <typename PointSourceType>
 Eigen::Vector3i Octree<PointSourceType>::getNodeIdxFromPoint(PointSourceType point, int level)
 {
 	double resolution = resolution_ * std::pow(step_, level);
-	double x = std::round(point.x / resolution);
-	double y = std::round(point.y / resolution);
-	double z = std::round(point.z / resolution);
+	double x = std::floor(point.x / resolution);
+	double y = std::floor(point.y / resolution);
+	double z = std::floor(point.z / resolution);
 	return Eigen::Vector3i(x, y, z);
 }
 
@@ -74,9 +74,9 @@ void Octree<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceType>
 		{
 			Eigen::Vector3i cidx = m.first;
 			OctreeNode *cnode = m.second;
-			Eigen::Vector3i pidx = Eigen::Vector3i(std::round(cidx(0) / step_),
-												   std::round(cidx(1) / step_),
-												   std::round(cidx(2) / step_));
+			Eigen::Vector3i pidx = Eigen::Vector3i(std::floor(cidx(0) / step_),
+												   std::floor(cidx(1) / step_),
+												   std::floor(cidx(2) / step_));
 
 
 			if (nodemap.find(pidx) == nodemap.end())

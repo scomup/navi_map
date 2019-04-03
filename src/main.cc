@@ -47,12 +47,9 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LoadPcdFile(std::string file_name)
 }
 pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
-bool createMarker(GlobalPlan::OctreeNode *node,
-                  const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
-                  visualization_msgs::MarkerArray &marker_array)
+bool isGoodNode(GlobalPlan::OctreeNode *node)
 {
-    double level = node->level;
-    static int id = 0;
+
     auto centroid = node->centroid;
     auto covariance = node->covariance;
 
@@ -63,36 +60,34 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     {
         return false;
     }
-
     bool isplane = svd.singularValues().z() / svd.singularValues().y() < 0.2;
     bool islinear = svd.singularValues().y() / svd.singularValues().x() < 0.2;
     bool good = (isplane || islinear);
+    return good;
+}
 
-    //{
-    //    for (auto cnode : node->cnode)
-    //    {
-    //        createMarker(cnode, marker_array);
-    //        return;
-    //    }
-    //}
-    if (node->point_idx.size() < 200)
+bool createMarker(GlobalPlan::OctreeNode *node,
+                  const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                  visualization_msgs::MarkerArray &marker_array)
+{
+
+    if (node->point_idx.size() < 40)
         return false;
+
+    auto good = isGoodNode(node);
 
     if (!good)
     {
-
-        std::cout<<"old:"<<covariance<<std::endl;
         GlobalPlan::RecomputeNode<pcl::PointXYZ>(cloud, node);
-        centroid = node->centroid;
-        covariance = node->covariance;
-        std::cout<<"new:"<<covariance<<std::endl;
-        std::cout<<"------"<<std::endl;
         for (auto i : node->point_idx)
         {
             cloud_map->push_back(cloud->points[i]);
         }
     }
-    std::cout << "level:" << level << " cnode:" << node->cnode.size() << std::endl;
+
+    auto centroid = node->centroid;
+    auto covariance = node->covariance;
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
 
     Eigen::Matrix3d R(svd.matrixU());
     R.col(0).normalize();
@@ -103,6 +98,7 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     R.col(0).normalize();
     Eigen::Quaterniond q(R);
 
+    static int id = 0;
     visualization_msgs::Marker marker;
     marker.header.frame_id = "/map";
     marker.header.stamp = ros::Time::now();
@@ -112,9 +108,9 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     marker.action = visualization_msgs::Marker::ADD;
     marker.lifetime = ros::Duration();
 
-    marker.scale.x = sqrt(svd.singularValues().x()) * 5;
-    marker.scale.y = sqrt(svd.singularValues().y()) * 5;
-    marker.scale.z = sqrt(svd.singularValues().z()) * 5 == 0 ? 0.01 : sqrt(svd.singularValues().z()) * 5;
+    marker.scale.x = sqrt(svd.singularValues().x()) * 7;
+    marker.scale.y = sqrt(svd.singularValues().y()) * 7;
+    marker.scale.z = sqrt(svd.singularValues().z()) * 7;
 
     marker.pose.position.x = centroid[0];
     marker.pose.position.y = centroid[1];
@@ -123,25 +119,15 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     marker.pose.orientation.y = q.y();
     marker.pose.orientation.z = q.z();
     marker.pose.orientation.w = q.w();
-    if (good)
     {
         marker.color.r = 0.0f;
         marker.color.g = 1;
         marker.color.b = 0;
-        marker.color.a = 0.0f;
-    }
-    else
-    {
-        marker.color.r = 1.0f;
-        marker.color.g = 0;
-        marker.color.b = 0;
         marker.color.a = 0.3f;
     }
     marker_array.markers.push_back(marker);
-    if(!good)
     return true;
-    return false;
-}
+    }
 
 int main(int argc, char **argv)
 {
@@ -153,16 +139,16 @@ int main(int argc, char **argv)
     pcl::copyPointCloud(*cloud_raw, *cloud);
     GlobalPlan::Octree<pcl::PointXYZ> octree; //(voxel_ids, cloud);
     octree.setInput(cloud);
-    auto nodes = octree.getLevelNode(1);
+    auto nodes = octree.getLevelNode(0);
 
     
 
     visualization_msgs::MarkerArray marker_array;
     int l = 0;
+    int cont = 0;
     for (auto nn : nodes)
     {
-        if(createMarker(nn, cloud, marker_array))
-        break;
+            createMarker(nn, cloud, marker_array);
     }
     /*
     std::cout<<"try ransac!\n"<<std::endl;
