@@ -17,7 +17,6 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 
-
 #include <Eigen/Eigen>
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -25,19 +24,14 @@
 
 #include <unordered_map>
 #include <utility>
-	
 
 #include "Octree.h"
 #include "ransac.h"
-
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
 #include <nav_msgs/Path.h>
-
-
-
 
 pcl::PointCloud<pcl::PointXYZI>::Ptr LoadPcdFile(std::string file_name)
 {
@@ -51,8 +45,11 @@ pcl::PointCloud<pcl::PointXYZI>::Ptr LoadPcdFile(std::string file_name)
     std::cout << "read " << file_name << " success!" << std::endl;
     return cloud;
 }
+pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
-void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray& marker_array)
+void createMarker(GlobalPlan::OctreeNode *node,
+                  const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+                  visualization_msgs::MarkerArray &marker_array)
 {
     double level = node->level;
     static int id = 0;
@@ -71,18 +68,31 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
     bool islinear = svd.singularValues().y() / svd.singularValues().x() < 0.2;
     bool good = (isplane || islinear);
 
-    if (!good && level != 0)
-    {
-        for (auto cnode : node->cnode)
-        {
-            createMarker(cnode, marker_array);
-            return;
-        }
-    }
-    if(node->point_idx.size() < 30)
+    //{
+    //    for (auto cnode : node->cnode)
+    //    {
+    //        createMarker(cnode, marker_array);
+    //        return;
+    //    }
+    //}
+    if (node->point_idx.size() < 200)
         return;
 
-    std::cout<<"level:"<<level<<" cnode:"<<node->cnode.size()<<std::endl;
+    if (!good)
+    {
+
+        std::cout<<"old:"<<covariance<<std::endl;
+        GlobalPlan::RecomputeNode<pcl::PointXYZ>(cloud, node);
+        centroid = node->centroid;
+        covariance = node->covariance;
+        std::cout<<"new:"<<covariance<<std::endl;
+        std::cout<<"------"<<std::endl;
+        for (auto i : node->point_idx)
+        {
+            cloud_map->push_back(cloud->points[i]);
+        }
+    }
+    std::cout << "level:" << level << " cnode:" << node->cnode.size() << std::endl;
 
     Eigen::Matrix3d R(svd.matrixU());
     R.col(0).normalize();
@@ -104,7 +114,7 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
 
     marker.scale.x = sqrt(svd.singularValues().x()) * 5;
     marker.scale.y = sqrt(svd.singularValues().y()) * 5;
-    marker.scale.z = sqrt(svd.singularValues().z()) * 5;
+    marker.scale.z = sqrt(svd.singularValues().z()) * 5 == 0 ? 0.01 : sqrt(svd.singularValues().z()) * 5;
 
     marker.pose.position.x = centroid[0];
     marker.pose.position.y = centroid[1];
@@ -118,7 +128,7 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
         marker.color.r = 0.0f;
         marker.color.g = 1;
         marker.color.b = 0;
-        marker.color.a = 0.3f;
+        marker.color.a = 0.0f;
     }
     else
     {
@@ -127,8 +137,6 @@ void createMarker(GlobalPlan::OctreeNode *node, visualization_msgs::MarkerArray&
         marker.color.b = 0;
         marker.color.a = 0.3f;
     }
-
-    if(level != 1)
     marker_array.markers.push_back(marker);
 }
 
@@ -137,31 +145,22 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "info_marker_publisher1");
     ros::NodeHandle nh;
 
-
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_raw = LoadPcdFile("/home/liu/gazebo.pcd");
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
     pcl::copyPointCloud(*cloud_raw, *cloud);
-    GlobalPlan::Octree<pcl::PointXYZ> octree;//(voxel_ids, cloud);
+    GlobalPlan::Octree<pcl::PointXYZ> octree; //(voxel_ids, cloud);
     octree.setInput(cloud);
-    auto nodes = octree.getLevelNode(3);
+    auto nodes = octree.getLevelNode(1);
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
+    
 
     visualization_msgs::MarkerArray marker_array;
     int l = 0;
     for (auto nn : nodes)
     {
-        //std::cout<<nn->point_idx.size()<<std::endl;
-        //l++;
-        //if(l%2 != 0)
-        //    continue;
-        //for(n : nn->point_idx){
-        //    cloud_map->push_back(cloud->points[n]);
-        ////auto p = pcl::PointXYZ(n->centroid(0),n->centroid(1),n->centroid(2));
-        ////cloud_map->push_back(p);
-        //}
-        //createMarker(nn, marker_array);
+        createMarker(nn, cloud, marker_array);
     }
+    /*
     std::cout<<"try ransac!\n"<<std::endl;
     for (auto n : nodes)
     {
@@ -182,7 +181,7 @@ int main(int argc, char **argv)
             auto p = pcl::PointXYZ(x, y, z);
             cloud_map->push_back(p);
         }
-    }
+    }*/
 
     sensor_msgs::PointCloud2 output;
     pcl::toROSMsg(*cloud_map, output);
@@ -196,9 +195,6 @@ int main(int argc, char **argv)
 
     ros::spin();
 
-
-
-  
     /*
     std::vector<Eigen::Vector3i> voxel_ids(cloud->points.size());
 
@@ -233,7 +229,6 @@ int main(int argc, char **argv)
     cell_pub.publish(output);
         ros::spin();
         */
-
 
     //GlobalPlan::NaviMapVisualization map_visual(&navi_map);
 

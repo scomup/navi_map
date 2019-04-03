@@ -18,9 +18,9 @@ namespace GlobalPlan
 template <typename PointSourceType>
 Octree<PointSourceType>::Octree()
 {
-	step_ = 1.5;
-	resolution_ = 0.4;
-	max_level_ = 4;
+	step_ = 2;
+	resolution_ = 0.45;
+	max_level_ = 3;
 	octree_.reset();
 }
 template <typename PointSourceType>

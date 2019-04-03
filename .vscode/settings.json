@@ -52,6 +52,7 @@
         "utility": "cpp",
         "*.ipp": "cpp",
         "geometry": "cpp",
-        "forward_list": "cpp"
+        "forward_list": "cpp",
+        "set": "cpp"
     }
 }

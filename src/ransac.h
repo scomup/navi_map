@@ -6,6 +6,9 @@
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <stdlib.h>
+
+#include "OctreeNode.h"
+
 /* The octree is built on top of a voxel grid to fasten the nearest neighbor search */
 namespace GlobalPlan
 {
@@ -75,7 +78,7 @@ Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::
 }
 
 template <typename PointSourceType>
-Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx)
+Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx, std::vector<int>& inliner)
 {
 	double max_score = 0;
 	Eigen::Vector4d best_plane;
@@ -86,7 +89,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 		for (auto i : idx)
 		{
 			auto &p = point_cloud->points[i];
-			auto pp = Eigen::Vector3d(p.x,p.y,p.z); 
+			auto pp = Eigen::Vector3d(p.x, p.y, p.z); 
 			double dist = GetDistPlaneToPoint<double>(plane, pp);
 			score += exp(-std::abs(dist)*20);
 			
@@ -95,8 +98,32 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 			max_score = score; 
 			best_plane = plane;
 		}
+
+		for (auto i : idx)
+		{
+			auto &p = point_cloud->points[i];
+			auto pp = Eigen::Vector3d(p.x, p.y, p.z); 
+			double dist = GetDistPlaneToPoint<double>(best_plane, pp);
+			if(dist < 0.02)
+				inliner.push_back(i);
+		}
 	}
 	return best_plane;
+}
+
+template <typename PointSourceType>
+Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, OctreeNode *node)
+{
+	std::vector<int> inliner;
+	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliner);
+	Eigen::Vector4d centroid;
+	pcl::compute3DCentroid(*point_cloud, inliner, centroid);
+	Eigen::Matrix3d covariance;
+	Eigen::Vector3d centroid3d = centroid.head<3>();
+	pcl::computeCovarianceMatrixNormalized(*point_cloud, inliner, centroid, covariance);
+	node->point_idx = inliner;
+	node->centroid = centroid3d;
+	node->covariance = covariance;
 }
 
 } // namespace GlobalPlan

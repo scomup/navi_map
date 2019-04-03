@@ -13,6 +13,8 @@
 #include <unordered_map>
 #include <boost/functional/hash.hpp>
 
+#include "OctreeNode.h"
+
 /* The octree is built on top of a voxel grid to fasten the nearest neighbor search */
 namespace GlobalPlan {
 
@@ -26,17 +28,6 @@ struct hashkey3i
 		boost::hash_combine(seed, state.z());
 		return seed;
 	}
-};
-
-struct OctreeNode
-{
-	int level;
-	//Eigen::Vector3i idx;
-	Eigen::Vector3d centroid;
-	Eigen::Matrix3d covariance;
-	std::vector<int> point_idx;
-	OctreeNode* pnode;
-	std::set<OctreeNode*> cnode;
 };
 
 template <typename PointSourceType>
