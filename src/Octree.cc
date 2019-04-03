@@ -19,7 +19,7 @@ template <typename PointSourceType>
 Octree<PointSourceType>::Octree()
 {
 	step_ = 2;
-	resolution_ = 0.6;
+	resolution_ = 0.9;
 	max_level_ = 2;
 	octree_.reset();
 }
@@ -52,7 +52,7 @@ void Octree<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceType>
 		{
 			auto node = new OctreeNode();
 			node->level = level;
-			//node->idx = idx;
+			node->idx = idx;
 			node->point_idx.push_back(i);
 			node->centroid = Eigen::Vector3d(point.x, point.y, point.z);
 			nodemap[idx] = node;
@@ -83,6 +83,7 @@ void Octree<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceType>
 			{
 				auto node = new OctreeNode();
 				node->level = level;
+				node->idx = pidx;
 				node->point_idx.insert(node->point_idx.begin(), cnode->point_idx.begin(), cnode->point_idx.end());
 				node->centroid = cnode->centroid;
 				nodemap[pidx] = node;

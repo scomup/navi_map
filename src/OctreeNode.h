@@ -14,7 +14,7 @@ namespace GlobalPlan
 struct OctreeNode
 {
 	int level;
-	//Eigen::Vector3i idx;
+	Eigen::Vector3i idx;
 	Eigen::Vector3d centroid;
 	Eigen::Matrix3d covariance;
 	std::vector<int> point_idx;
