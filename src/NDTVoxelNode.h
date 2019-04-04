@@ -1,6 +1,6 @@
 
-#ifndef OCTREENODE_H_
-#define OCTREENODE_H_
+#ifndef NDTVOXELNODE_H_
+#define NDTVOXELNODE_H_
 
 #include <vector>
 #include <set>
@@ -11,15 +11,15 @@
 namespace GlobalPlan
 {
 
-struct OctreeNode
+struct NDTVoxelNode
 {
-	int level;
+	int mode;
 	Eigen::Vector3i idx;
 	Eigen::Vector3d centroid;
 	Eigen::Matrix3d covariance;
 	std::vector<int> point_idx;
-	OctreeNode* pnode;
-	std::set<OctreeNode*> cnode;
+	NDTVoxelNode* pnode;
+	std::set<NDTVoxelNode*> cnode;
 };
 
 }

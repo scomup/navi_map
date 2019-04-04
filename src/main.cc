@@ -1,3 +1,6 @@
+#include <chrono>
+#include <thread>
+
 #include <pcl/point_types.h>
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/conversions.h>
@@ -25,111 +28,47 @@
 #include <unordered_map>
 #include <utility>
 
-#include "Octree.h"
-#include "ransac.h"
+#include "NDTVoxel.h"
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
 #include <nav_msgs/Path.h>
+#include "MultiLevelGrid.h"
 
 
-template <typename FloatType>
-FloatType GetZOnSurface(const Eigen::Matrix<FloatType, 4, 4> &Tinv, const FloatType x, const FloatType y, const FloatType variance = 6)
+
+pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
+
+void cloud_cb(const sensor_msgs::PointCloud2ConstPtr &input)
 {
-	FloatType a = Tinv(0, 0);
-	FloatType b = Tinv(0, 1);
-	FloatType c = Tinv(0, 2);
-	FloatType d = Tinv(0, 3);
-
-	FloatType e = Tinv(1, 0);
-	FloatType f = Tinv(1, 1);
-	FloatType g = Tinv(1, 2);
-	FloatType h = Tinv(1, 3);
-
-	FloatType i = Tinv(2, 0);
-	FloatType j = Tinv(2, 1);
-	FloatType k = Tinv(2, 2);
-	FloatType l = Tinv(2, 3);
-
-	//x' = a*x+b*y+c*z+d
-	//y' = e*x+f*y+g*z+h
-	//z' = i*x+j*y+k*z+l
-	//x'^2 + y'^2 + z'^2 = 1
-	//we need slove it!
-	//(a*x+b*y+c*z+d)^2 + (e*x+f*y+g*z+h)^2 + (i*x+j*y+k*z+l)^2 = 1
-
-	FloatType m = a * x + b * y + d;
-	FloatType n = e * x + f * y + h;
-	FloatType o = i * x + j * y + l;
-
-	FloatType p = (2 * c * m + 2 * g * n + 2 * k * o);
-	FloatType q = (c * c + g * g + k * k) * (m * m + n * n + o * o - variance);
-	FloatType delta = p * p - 4 * q;
-
-	if (delta < 0)
-		return NAN;
-
-	//we only use the big one;
-
-	if (c * c + g * g + k * k == 0)
-		return NAN;
-
-	FloatType z = (sqrt(delta) / 2 - c * m - g * n - k * o) / (c * c + g * g + k * k);
-	return z;
-}
-
-pcl::PointCloud<pcl::PointXYZI>::Ptr LoadPcdFile(std::string file_name)
-{
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZI>);
-    std::cout << "try to read " << file_name << " ." << std::endl;
-    if (pcl::io::loadPCDFile<pcl::PointXYZI>(file_name, *cloud) == -1)
+    // ... do data processing
+    pcl::PointCloud<pcl::PointXYZ>::Ptr local_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(*input, *local_cloud);
+    size_t j = 0;
+    for (size_t i = 0; i < local_cloud->points.size(); ++i)
     {
-        PCL_ERROR("Couldn't read file test_pcd.pcd \n");
-        abort();
+        if (!pcl_isfinite(local_cloud->points[i].x) ||
+            !pcl_isfinite(local_cloud->points[i].y) ||
+            !pcl_isfinite(local_cloud->points[i].z))
+            continue;
+        local_cloud->points[j] = local_cloud->points[i];
+        j++;
     }
-    std::cout << "read " << file_name << " success!" << std::endl;
-    return cloud;
+    if (j != local_cloud->points.size())
+    {
+        // Resize to the correct size
+        local_cloud->points.resize(j);
+    }
+    cloud = local_cloud;
 }
+
 pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
-bool isGoodNode(GlobalPlan::OctreeNode *node)
-{
-
-    auto centroid = node->centroid;
-    auto covariance = node->covariance;
-
-    Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
-    if (std::isnan(svd.singularValues().x()) ||
-        std::isnan(svd.singularValues().y()) ||
-        std::isnan(svd.singularValues().z()))
-    {
-        return false;
-    }
-    bool isplane = svd.singularValues().z() / svd.singularValues().y() < 0.2;
-    bool islinear = svd.singularValues().y() / svd.singularValues().x() < 0.2;
-    bool good = (isplane || islinear);
-    return good;
-}
-
-bool createMarker(GlobalPlan::OctreeNode *node,
-                  const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
+bool createMarker(GlobalPlan::NDTVoxelNode *node, int rgb,
                   visualization_msgs::MarkerArray &marker_array)
 {
 
-    if (node->point_idx.size() < 40)
-        return false;
-
-    auto good = isGoodNode(node);
-
-    if (!good)
-    {
-        GlobalPlan::RecomputeNode<pcl::PointXYZ>(cloud, node);
-        //for (auto i : node->point_idx)
-        //{
-        //    cloud_map->push_back(cloud->points[i]);
-        //}
-    }
 
     auto centroid = node->centroid;
     auto covariance = node->covariance;
@@ -154,9 +93,9 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     marker.action = visualization_msgs::Marker::ADD;
     marker.lifetime = ros::Duration();
 
-    marker.scale.x = sqrt(svd.singularValues().x()) * 7;
-    marker.scale.y = sqrt(svd.singularValues().y()) * 7;
-    marker.scale.z = sqrt(svd.singularValues().z()) * 7;
+    marker.scale.x = sqrt(svd.singularValues().x()) * 5;
+    marker.scale.y = sqrt(svd.singularValues().y()) * 5;
+    marker.scale.z = sqrt(svd.singularValues().z()) * 5;
 
     marker.pose.position.x = centroid[0];
     marker.pose.position.y = centroid[1];
@@ -165,41 +104,88 @@ bool createMarker(GlobalPlan::OctreeNode *node,
     marker.pose.orientation.y = q.y();
     marker.pose.orientation.z = q.z();
     marker.pose.orientation.w = q.w();
+    if (rgb == 0)
     {
-        marker.color.r = 0.0f;
+        marker.color.r = 1;
+        marker.color.g = 0;
+        marker.color.b = 0;
+        marker.color.a = 0.3;
+    }
+    else if(rgb == 1)
+    {
+        marker.color.r = 0;
         marker.color.g = 1;
         marker.color.b = 0;
-        marker.color.a = 0.3f;
+        marker.color.a = 0.3;
     }
+    else
+    {
+        marker.color.r = 0;
+        marker.color.g = 0;
+        marker.color.b = 1;
+        marker.color.a = 0.3;
+    }
+
     marker_array.markers.push_back(marker);
     return true;
-    }
+}
 
 int main(int argc, char **argv)
 {
     ros::init(argc, argv, "info_marker_publisher1");
     ros::NodeHandle nh;
 
-    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_raw = LoadPcdFile("/home/liu/gazebo.pcd");
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
-    pcl::copyPointCloud(*cloud_raw, *cloud);
-    GlobalPlan::Octree<pcl::PointXYZ> octree; //(voxel_ids, cloud);
-    octree.setInput(cloud);
-    auto nodes = octree.getLevelNode(0);
+    ros::Subscriber sub = nh.subscribe("/map3d", 1, cloud_cb);
 
-    
+    std::cout << "wait map3d topic\n";
+    while (cloud == nullptr && ros::ok())
+    {
+        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        ros::spinOnce();
+    }
 
     visualization_msgs::MarkerArray marker_array;
-    int l = 0;
-    int cont = 0;
+
+    GlobalPlan::MultiLevelGrid mlg(0.8, 0.1);
+    mlg.setInput(cloud);
+    auto traversable_node = mlg.traversable_node();
+    for (auto& n : traversable_node)
+    {
+        createMarker(n, 1, marker_array);
+    }
+
+    auto obstacle_node = mlg.obstacle_node();
+    for (auto& n : obstacle_node)
+    {
+        createMarker(n, 0, marker_array);
+    }
+
+    auto cellmap3d = mlg.cellmap3d();
+    for (auto& m : cellmap3d)
+    {
+        auto& cell = m.second;
+        cloud_map->push_back(pcl::PointXYZ(cell->position(0), cell->position(1), cell->position(2)));
+    }
+
+    /*
+    GlobalPlan::NDTVoxel<pcl::PointXYZ> voxel; //(voxel_ids, cloud);
+    voxel.setInput(cloud);
+    auto nodes = voxel.getAllNode();
+
+    visualization_msgs::MarkerArray marker_array;
     for (auto nn : nodes)
     {
-        createMarker(nn, cloud, marker_array);
-        double min_x = nn->idx(0) * 0.9;
-        double min_y = nn->idx(1) * 0.9;
-        double max_x = (nn->idx(0) + 1) * 0.9;
-        double max_y = (nn->idx(1) + 1) * 0.9;
+        //if(cont == 500)
+        //    break;
 
+        bool state = createMarker(nn, cloud, marker_array);
+
+        if(!state)
+            continue;
+
+
+        double min_x,min_y,min_z,max_x,max_y,max_z;
+        voxel.getNodeBoundary(nn,min_x,min_y,min_z,max_x,max_y,max_z);
         auto centroid = nn->centroid;
         auto covariance = nn->covariance;
 
@@ -227,13 +213,12 @@ int main(int argc, char **argv)
         {
             for (double y = min_y; y < max_y; y += 0.1)
             {
-                double z = GetZOnSurface<double>(Tinv, x, y, 6);
+                double z = GlobalPlan::GetZOnSurface<double>(Tinv, x, y, 6);
                 cloud_map->push_back(pcl::PointXYZ(x,y,z));
             }
         }
     }
-
-
+    */
 
     /*
     std::cout<<"try ransac!\n"<<std::endl;
@@ -284,11 +269,11 @@ int main(int argc, char **argv)
     }
     std::cout<<"1.."<<std::endl;
 
-    GlobalPlan::Octree<pcl::PointXYZ> octree;//(voxel_ids, cloud);
-    octree.setInput(voxel_ids, cloud);
+    GlobalPlan::NDTVoxel<pcl::PointXYZ> voxel;//(voxel_ids, cloud);
+    voxel.setInput(voxel_ids, cloud);
     std::cout<<"OK.."<<std::endl;
 
-    auto nodes = octree.getOctreeLevel(0);
+    auto nodes = voxel.getNDTVoxelLevel(0);
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
 
     for (auto n : nodes)

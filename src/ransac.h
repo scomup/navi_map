@@ -4,46 +4,20 @@
 #include <eigen3/Eigen/Dense>
 #include <eigen3/Eigen/Geometry>
 #include <pcl/point_types.h>
-#include <pcl/point_cloud.h>
+
+#include <pcl/common/transforms.h>
+
+
 #include <stdlib.h>
 
-#include "OctreeNode.h"
+#include "NDTVoxelNode.h"
+#include "common.h"
 
-/* The octree is built on top of a voxel grid to fasten the nearest neighbor search */
 namespace GlobalPlan
 {
 
-//template <PointSourceType>
-//void Octree<PointSourceType>::setInput(typename pcl::PointCloud<PointSourceType>::Ptr point_cloud)
 
-template <typename FloatType>
-FloatType GetDistPlaneToPoint(const Eigen::Matrix<FloatType, 4, 1> &plane,
-							  const Eigen::Matrix<FloatType, 3, 1> &point)
-{
-	FloatType x = point.x();
-	FloatType y = point.y();
-	FloatType z = point.z();
-	FloatType a = plane[0];
-	FloatType b = plane[1];
-	FloatType c = plane[2];
-	FloatType d = plane[3];
-	return std::abs(a * x + b * y + c * z + d) / std::sqrt(a * a + b * b + c * c);
-}
-
-template <typename FloatType>
-Eigen::Matrix<FloatType, 4, 1> FindPlane(const Eigen::Matrix<FloatType, 3, 1> point, const Eigen::Matrix<FloatType, 3, 1> normal_vector)
-{
-	FloatType x = point.x();
-	FloatType y = point.y();
-	FloatType z = point.z();
-	FloatType a = normal_vector.x();
-	FloatType b = normal_vector.y();
-	FloatType c = normal_vector.z();
-
-	return Eigen::Matrix<FloatType, 4, 1>(a, b, c, -(a * x + b * y + c * z));
-}
-
-void getRondomNum(size_t l, size_t &a, size_t &b, size_t &c)
+static void getRondomNum(size_t l, size_t &a, size_t &b, size_t &c)
 {
 	while (true)
 	{
@@ -90,7 +64,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 			auto &p = point_cloud->points[i];
 			auto pp = Eigen::Vector3d(p.x, p.y, p.z);
 			double dist = GetDistPlaneToPoint<double>(plane, pp);
-			score += exp(-std::abs(dist) * 5);
+			score += exp(-std::abs(dist) * 20);
 		}
 		if (score > max_score)
 		{
@@ -103,7 +77,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 		auto &p = point_cloud->points[i];
 		auto pp = Eigen::Vector3d(p.x, p.y, p.z);
 		double dist = GetDistPlaneToPoint<double>(best_plane, pp);
-		if (dist < 0.1)
+		if (dist < 0.05)
 			inliner.push_back(i);
 	}
 
@@ -111,20 +85,31 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 }
 
 template <typename PointSourceType>
-Eigen::Vector4d RecomputeNode(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, OctreeNode *node)
+NDTVoxelNode* RecomputeNode(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, NDTVoxelNode *node)
 {
 	std::vector<int> inliner;
 	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliner);
-	std::cout << "old number:" << node->point_idx.size() << std::endl;
+	int all_num = node->point_idx.size();
+	//std::cout << "old number:" << node->point_idx.size() << std::endl;
 	Eigen::Vector4d centroid;
 	pcl::compute3DCentroid(*point_cloud, inliner, centroid);
 	Eigen::Matrix3d covariance;
 	Eigen::Vector3d centroid3d = centroid.head<3>();
 	pcl::computeCovarianceMatrixNormalized(*point_cloud, inliner, centroid, covariance);
-	node->point_idx = inliner;
-	node->centroid = centroid3d;
-	node->covariance = covariance;
-	std::cout << "new number:" << inliner.size() << std::endl;
+	int  inliner_num = inliner.size();
+	double r = (double)(inliner_num)/(double)(all_num);
+	if (r < 0.3)
+		return nullptr;
+	NDTVoxelNode *new_node = new NDTVoxelNode();
+
+	new_node->mode = node->mode;
+	new_node->idx = node->idx;
+	new_node->centroid = centroid3d;
+	new_node->covariance = covariance;
+	new_node->point_idx = inliner;
+	new_node->pnode = node->pnode;
+	new_node->cnode = node->cnode;
+	return new_node;
 }
 
 } // namespace GlobalPlan

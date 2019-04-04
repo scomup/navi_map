@@ -53,6 +53,7 @@
         "*.ipp": "cpp",
         "geometry": "cpp",
         "forward_list": "cpp",
-        "set": "cpp"
+        "set": "cpp",
+        "hash_map": "cpp"
     }
 }
