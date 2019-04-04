@@ -54,6 +54,8 @@
         "geometry": "cpp",
         "forward_list": "cpp",
         "set": "cpp",
-        "hash_map": "cpp"
+        "hash_map": "cpp",
+        "mutex": "cpp",
+        "string_view": "cpp"
     }
 }

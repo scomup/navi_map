@@ -47,7 +47,8 @@ void MultiLevelGrid::NodeAnalysis(NDTVoxelNode *node, NodeType &type, double &th
 void MultiLevelGrid::NodeClassification()
 {
   auto nodes = voxel_->getAllNode();
-
+  std::vector<NDTVoxelNode*> bad_nodes;
+  
   for (auto node : nodes)
   {
 
@@ -62,37 +63,51 @@ void MultiLevelGrid::NodeClassification()
     {
       traversable_node_.push_back(node);
     }
-    else if (type == NodeType::SPHERICAL && theta < M_PI / 6)
+    else
     {
-      auto new_node = RecomputeNode<pcl::PointXYZ>(cloud_, node);
-      NodeAnalysis(new_node, type, theta);
-      if (theta < M_PI / 6)
-        traversable_node_.push_back(new_node);
+      bad_nodes.push_back(node);
+    }
+  }
 
-      std::vector<int> outliner;
-      std::set_difference(node->point_idx.begin(),
-                          node->point_idx.end(),
-                          new_node->point_idx.begin(),
-                          new_node->point_idx.end(),
-                          std::inserter(outliner, outliner.begin()));
-      //std::cout<<"in: "<<new_node->point_idx.size()<<" out: "<<outliner.size()<<std::endl;
-      if (outliner.size() > 50)
-      {
-        NDTVoxelNode tmp_node;
-        tmp_node.mode = node->mode;
-        tmp_node.idx = node->idx;
-        tmp_node.centroid = node->centroid;
-        tmp_node.covariance = node->covariance;
-        tmp_node.point_idx = outliner;
-        tmp_node.pnode = node->pnode;
-        tmp_node.cnode = node->cnode;
+  std::vector<NDTVoxelNode*> tmp_nodes;
+  for (auto node : bad_nodes)
+  {
+    auto new_node = RecomputeNode<pcl::PointXYZ>(cloud_, node);
+    if (new_node == nullptr)
+      continue;
+    tmp_nodes.push_back(new_node);
+    std::vector<int> outliner;
+    std::set_difference(node->point_idx.begin(),
+                        node->point_idx.end(),
+                        new_node->point_idx.begin(),
+                        new_node->point_idx.end(),
+                        std::inserter(outliner, outliner.begin()));
+    if (outliner.size() < 150)
+      continue;
+    NDTVoxelNode tmp_node;
+    tmp_node.mode = node->mode;
+    tmp_node.idx = node->idx;
+    tmp_node.centroid = node->centroid;
+    tmp_node.covariance = node->covariance;
+    tmp_node.point_idx = outliner;
+    tmp_node.pnode = node->pnode;
+    tmp_node.cnode = node->cnode;
+    auto new_node2 = RecomputeNode<pcl::PointXYZ>(cloud_, &tmp_node);
+    if (new_node2 == nullptr)
+      continue;
+    tmp_nodes.push_back(new_node2);
+  }
 
-        auto new_node2 = RecomputeNode<pcl::PointXYZ>(cloud_, &tmp_node);
-        NodeAnalysis(new_node2, type, theta);
-        if (theta < M_PI / 6){
-          traversable_node_.push_back(new_node2);
-        }
-      }
+  for (auto node : tmp_nodes)
+  {
+
+    NodeType type;
+    double theta;
+    NodeAnalysis(node, type, theta);
+
+    if (type != NodeType::SPHERICAL && theta < M_PI / 6)
+    {
+      traversable_node_.push_back(node);
     }
     else
     {
@@ -137,7 +152,6 @@ void MultiLevelGrid::makeTraversableGrid()
     double y = idx_y * grid_resolution_;
 
     auto &z_list = element.second;
-    std::cout<<z_list.size()<<std::endl;
     std::sort(z_list.begin(), z_list.end());
     std::reverse(z_list.begin(), z_list.end());
     double z = z_list[0];
