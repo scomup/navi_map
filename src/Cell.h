@@ -24,9 +24,13 @@ struct Cell
 		neighbours[5] = nullptr;
 		neighbours[6] = nullptr;
 		neighbours[7] = nullptr;
+		untraversable = false;
+		dist = 10;
+		
 	}
 	Eigen::Vector3d position;
-	std::array<uint8_t, 2> cost;
+	bool untraversable;
+	double dist;
 	std::array<Cell *, 8> neighbours;
 };
 

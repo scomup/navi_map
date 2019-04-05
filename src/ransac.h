@@ -51,7 +51,7 @@ Eigen::Vector4d getRondomPlane(const typename pcl::PointCloud<PointSourceType>::
 }
 
 template <typename PointSourceType>
-Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx, std::vector<int> &inliner)
+Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, const std::vector<int> &idx, std::vector<int> &inliers)
 {
 	double max_score = 0;
 	Eigen::Vector4d best_plane;
@@ -78,7 +78,7 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 		auto pp = Eigen::Vector3d(p.x, p.y, p.z);
 		double dist = GetDistPlaneToPoint<double>(best_plane, pp);
 		if (dist < 0.05)
-			inliner.push_back(i);
+			inliers.push_back(i);
 	}
 
 	return best_plane;
@@ -87,17 +87,17 @@ Eigen::Vector4d RansacPlane(const typename pcl::PointCloud<PointSourceType>::Ptr
 template <typename PointSourceType>
 NDTVoxelNode* RecomputeNode(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, NDTVoxelNode *node)
 {
-	std::vector<int> inliner;
-	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliner);
+	std::vector<int> inliers;
+	GlobalPlan::RansacPlane<pcl::PointXYZ>(point_cloud, node->point_idx, inliers);
 	int all_num = node->point_idx.size();
 	//std::cout << "old number:" << node->point_idx.size() << std::endl;
 	Eigen::Vector4d centroid;
-	pcl::compute3DCentroid(*point_cloud, inliner, centroid);
+	pcl::compute3DCentroid(*point_cloud, inliers, centroid);
 	Eigen::Matrix3d covariance;
 	Eigen::Vector3d centroid3d = centroid.head<3>();
-	pcl::computeCovarianceMatrixNormalized(*point_cloud, inliner, centroid, covariance);
-	int  inliner_num = inliner.size();
-	double r = (double)(inliner_num)/(double)(all_num);
+	pcl::computeCovarianceMatrixNormalized(*point_cloud, inliers, centroid, covariance);
+	int  inliers_num = inliers.size();
+	double r = (double)(inliers_num)/(double)(all_num);
 	if (r < 0.3)
 		return nullptr;
 	NDTVoxelNode *new_node = new NDTVoxelNode();
@@ -106,10 +106,56 @@ NDTVoxelNode* RecomputeNode(const typename pcl::PointCloud<PointSourceType>::Ptr
 	new_node->idx = node->idx;
 	new_node->centroid = centroid3d;
 	new_node->covariance = covariance;
-	new_node->point_idx = inliner;
+	new_node->point_idx = inliers;
 	new_node->pnode = node->pnode;
 	new_node->cnode = node->cnode;
 	return new_node;
+}
+
+template <typename PointSourceType>
+std::vector<int> computeInliers(const typename pcl::PointCloud<PointSourceType>::Ptr point_cloud, NDTVoxelNode *node)
+{
+	std::vector<int> inliers;
+
+	auto &centroid = node->centroid;
+	auto &covariance = node->covariance;
+
+	Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+	if (std::isnan(svd.singularValues().x()) ||
+		std::isnan(svd.singularValues().y()) ||
+		std::isnan(svd.singularValues().z()))
+	{
+		return inliers;
+	}
+
+	Eigen::Matrix3d R(svd.matrixU());
+	R.col(0).normalize();
+	R.col(1).normalize();
+	R.col(2) = R.col(0).cross(R.col(1));
+	R.col(2).normalize();
+	R.col(0) = R.col(1).cross(R.col(2));
+	R.col(0).normalize();
+
+	Eigen::Matrix3d S;
+	S << sqrt(svd.singularValues().x()), 0, 0,
+		0, sqrt(svd.singularValues().y()), 0,
+		0, 0, sqrt(svd.singularValues().z());
+
+	Eigen::Matrix3d T = Eigen::Matrix3d::Identity();
+	T = R * S;
+	Eigen::Matrix3d Tinv = T.inverse();
+
+	for (size_t n : node->point_idx)
+	{
+		Eigen::Vector3d p = Eigen::Vector3d(point_cloud->points[n].x, point_cloud->points[n].y, point_cloud->points[n].z);
+		p = p - centroid;
+		Eigen::Vector3d v = Tinv * p;
+		double dist = v.norm();
+		if (dist < sqrt(6))
+			inliers.push_back(n);
+	}
+	return inliers;
 }
 
 } // namespace GlobalPlan

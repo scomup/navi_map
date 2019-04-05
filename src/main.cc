@@ -63,7 +63,7 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr &input)
     cloud = local_cloud;
 }
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
+pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZI>());
 
 bool createMarker(GlobalPlan::NDTVoxelNode *node, int rgb,
                   visualization_msgs::MarkerArray &marker_array)
@@ -161,11 +161,43 @@ int main(int argc, char **argv)
     }
 
     auto cellmap3d = mlg.cellmap3d();
+    
     for (auto& m : cellmap3d)
     {
         auto& cell = m.second;
-        cloud_map->push_back(pcl::PointXYZ(cell->position(0), cell->position(1), cell->position(2)));
+        pcl::PointXYZI p;// = pcl::PointXYZI(cell->position(0), cell->position(1), cell->position(2));
+        p.x = cell->position(0);
+        p.y = cell->position(1);
+        p.z = cell->position(2);
+        /*
+        int cont = 0;
+        for (auto &cur : cell->neighbours)
+        {
+            if (cur != nullptr)
+            {
+                cont++;
+            }
+        }
+        p.intensity = cont;
+       // p.intensity = cell->untraversable;
+        */
+
+        p.intensity = cell->dist;
+        cloud_map->push_back(p);
     }
+
+/*
+    for (int i = 0; i<= 8;i++)
+    {
+        pcl::PointXYZI p;// = pcl::PointXYZI(cell->position(0), cell->position(1), cell->position(2));
+        p.x = (double)i*0.1;
+        p.y = 0;
+        p.z = 3;
+        p.intensity = i;
+        
+
+        cloud_map->push_back(p);
+    }*/
 
     /*
     GlobalPlan::NDTVoxel<pcl::PointXYZ> voxel; //(voxel_ids, cloud);
@@ -252,6 +284,7 @@ int main(int argc, char **argv)
 
     ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("marker", 1, true);
     marker_pub.publish(marker_array);
+    std::cout << "OK!" << std::endl;
 
     ros::spin();
 

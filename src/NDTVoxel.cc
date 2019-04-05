@@ -80,7 +80,6 @@ void NDTVoxel<PointSourceType>::setInput(const typename pcl::PointCloud<PointSou
 
 	std::cout << "compute covariance.." << std::endl;
 	computeCovariance();
-	std::cout << "OK!" << std::endl;
 }
 
 template <typename PointSourceType>
