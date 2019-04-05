@@ -3,9 +3,6 @@
 
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
-#include <flann/algorithms/dist.h>
-#include <flann/algorithms/kdtree_single_index.h>
-#include <flann/flann.hpp>
 
 #include "NDTVoxel.h"
 #include "Cell.h"
@@ -31,11 +28,10 @@ class MultiLevelGrid
 std::vector<int> obstacle_idx;
 //std::vector<int> traversable_idx;
 
-  private:
+  protected:
     void NodeClassification();
     void NodeAnalysis(NDTVoxelNode *node, NodeType &type, double &theta);
     void makeTraversableGrid();
-    //void makeObstacleKDtree();
     void computeObstacle();
     //double findNearestObstDist(const Eigen::Vector3d &position);
     void computeConection(Cell *cell);
@@ -43,7 +39,7 @@ std::vector<int> obstacle_idx;
     void computeInflation();
 
 
-  private:
+  protected:
     boost::shared_ptr<NDTVoxel<pcl::PointXYZ>> voxel_;
     double ndt_voxel_resolution_;
     double grid_resolution_;
@@ -52,7 +48,6 @@ std::vector<int> obstacle_idx;
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_;
     CellMap2i cellmap2i_;
     CellMap3d cellmap3d_;
-    //flann::Index<flann::L2_Simple<double>> obst_kdtree_;
 
 };
 } // namespace GlobalPlan

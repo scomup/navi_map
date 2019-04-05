@@ -4,26 +4,12 @@
 
 namespace GlobalPlan
 {
-/*
-flann::Matrix<double> static convertEigen2Flann(const Eigen::Vector3d &mat)
-{
-  flann::Matrix<double> out(new double[mat.rows() * mat.cols()],
-                            mat.cols(), mat.rows());
-  for (int i = 0; i < mat.cols(); i++)
-  {
-    for (int j = 0; j < mat.rows(); j++)
-    {
-      out[i][j] = mat(j, i);
-    }
-  }
-  return out;
-}*/
+
 
 MultiLevelGrid::MultiLevelGrid(const double ndt_voxel_resolution, const double grid_resolution)
     : voxel_(boost::make_shared<NDTVoxel<pcl::PointXYZ>>(ndt_voxel_resolution)),
       ndt_voxel_resolution_(ndt_voxel_resolution),
       grid_resolution_(grid_resolution){}
-      //obst_kdtree_(flann::KDTreeSingleIndexParams()){}
 
 void MultiLevelGrid::setInput(const pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud)
 {

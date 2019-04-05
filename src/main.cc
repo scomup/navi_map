@@ -34,7 +34,7 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Pose.h>
 #include <nav_msgs/Path.h>
-#include "MultiLevelGrid.h"
+#include "NaviMap.h"
 
 
 
@@ -146,134 +146,58 @@ int main(int argc, char **argv)
 
     visualization_msgs::MarkerArray marker_array;
 
-    GlobalPlan::MultiLevelGrid mlg(0.8, 0.1);
-    mlg.setInput(cloud);
-    auto traversable_node = mlg.traversable_node();
+    GlobalPlan::NaviMap navi_map(0.8, 0.1);
+    navi_map.setInput(cloud);
+    auto traversable_node = navi_map.traversable_node();
     for (auto& n : traversable_node)
     {
         createMarker(n, 1, marker_array);
     }
 
-    auto obstacle_node = mlg.obstacle_node();
+    auto obstacle_node = navi_map.obstacle_node();
     for (auto& n : obstacle_node)
     {
         createMarker(n, 0, marker_array);
     }
 
-    auto cellmap3d = mlg.cellmap3d();
+    auto cellmap3d = navi_map.cellmap3d();
     
     for (auto& m : cellmap3d)
     {
         auto& cell = m.second;
-        pcl::PointXYZI p;// = pcl::PointXYZI(cell->position(0), cell->position(1), cell->position(2));
+        pcl::PointXYZI p;
         p.x = cell->position(0);
         p.y = cell->position(1);
         p.z = cell->position(2);
-        /*
-        int cont = 0;
-        for (auto &cur : cell->neighbours)
-        {
-            if (cur != nullptr)
-            {
-                cont++;
-            }
-        }
-        p.intensity = cont;
-       // p.intensity = cell->untraversable;
-        */
 
         p.intensity = cell->dist;
         cloud_map->push_back(p);
     }
 
-/*
-    for (int i = 0; i<= 8;i++)
+    auto s = navi_map.FindNearestCell(Eigen::Vector3d(0,-1.5,0));
+    auto g = navi_map.FindNearestCell(Eigen::Vector3d(0,15,3));
+
+    std::vector<Eigen::Vector3d> path;
+
+    navi_map.FindPath(s, g, path);
+    ros::Publisher plan_pub;
+    plan_pub = nh.advertise<nav_msgs::Path>("global_plan", 1, true);
+    nav_msgs::Path path_msg;
+
+    path_msg.poses.resize(path.size());
+    path_msg.header.frame_id = "map";
+    path_msg.header.stamp = ros::Time::now();
+
+    int i = 0;
+    for (Eigen::Vector3d p : path)
     {
-        pcl::PointXYZI p;// = pcl::PointXYZI(cell->position(0), cell->position(1), cell->position(2));
-        p.x = (double)i*0.1;
-        p.y = 0;
-        p.z = 3;
-        p.intensity = i;
-        
-
-        cloud_map->push_back(p);
-    }*/
-
-    /*
-    GlobalPlan::NDTVoxel<pcl::PointXYZ> voxel; //(voxel_ids, cloud);
-    voxel.setInput(cloud);
-    auto nodes = voxel.getAllNode();
-
-    visualization_msgs::MarkerArray marker_array;
-    for (auto nn : nodes)
-    {
-        //if(cont == 500)
-        //    break;
-
-        bool state = createMarker(nn, cloud, marker_array);
-
-        if(!state)
-            continue;
-
-
-        double min_x,min_y,min_z,max_x,max_y,max_z;
-        voxel.getNodeBoundary(nn,min_x,min_y,min_z,max_x,max_y,max_z);
-        auto centroid = nn->centroid;
-        auto covariance = nn->covariance;
-
-        Eigen::JacobiSVD<Eigen::Matrix3d> svd(covariance, Eigen::ComputeFullU | Eigen::ComputeFullV);
-        Eigen::Matrix3d R(svd.matrixU());
-        R.col(0).normalize();
-        R.col(1).normalize();
-        R.col(2) = R.col(0).cross(R.col(1));
-        R.col(2).normalize();
-        R.col(0) = R.col(1).cross(R.col(2));
-        R.col(0).normalize();
-        Eigen::Matrix3d S;
-        S << sqrt(svd.singularValues().x()), 0, 0,
-            0, sqrt(svd.singularValues().y()), 0,
-            0, 0, sqrt(svd.singularValues().z());
-
-        Eigen::Matrix4d T = Eigen::Matrix4d::Identity();
-        T.block<3, 3>(0, 0) = R * S;
-        T(0, 3) = centroid(0);
-        T(1, 3) = centroid(1);
-        T(2, 3) = centroid(2);
-        Eigen::Matrix4d Tinv = T.inverse();
-
-        for (double x = min_x; x < max_x; x += 0.1)
-        {
-            for (double y = min_y; y < max_y; y += 0.1)
-            {
-                double z = GlobalPlan::GetZOnSurface<double>(Tinv, x, y, 6);
-                cloud_map->push_back(pcl::PointXYZ(x,y,z));
-            }
-        }
+        geometry_msgs::PoseStamped pose;
+        pose.pose.position.x = p.x();
+        pose.pose.position.y = p.y();
+        pose.pose.position.z = p.z()+0.3;
+        path_msg.poses[i++] = pose;
     }
-    */
-
-    /*
-    std::cout<<"try ransac!\n"<<std::endl;
-    for (auto n : nodes)
-    {
-        std::cout<<n->point_idx.size()<<std::endl;
-        if(n->point_idx.size() < 100)
-            continue;
-        auto plane = GlobalPlan::RansacPlane<pcl::PointXYZ>(cloud, n->point_idx);
-
-        for (auto i : n->point_idx)
-        {
-            double x = cloud->points[i].x;
-            double y = cloud->points[i].y;
-            double a = plane[0];
-            double b = plane[1];
-            double c = plane[2];
-            double d = plane[3];
-            double z = -(a * x + b * y + d) / c;
-            auto p = pcl::PointXYZ(x, y, z);
-            cloud_map->push_back(p);
-        }
-    }*/
+    plan_pub.publish(path_msg);
 
     sensor_msgs::PointCloud2 output;
     pcl::toROSMsg(*cloud_map, output);
