@@ -50,7 +50,7 @@ void NDTVoxel<PointSourceType>::setInput(const typename pcl::PointCloud<PointSou
 	voxel_ = boost::make_shared<std::vector<Nodemap>>();
 
 	(*voxel_).resize(2);
-	std::cout << "create voxel.." << std::endl;
+	std::cout << "Create voxel.." << std::endl;
 
 	for (int mode = 0; mode < 2; mode++)
 	{
@@ -77,8 +77,6 @@ void NDTVoxel<PointSourceType>::setInput(const typename pcl::PointCloud<PointSou
 			}
 		}
 	}
-
-	std::cout << "compute covariance.." << std::endl;
 	computeCovariance();
 }
 

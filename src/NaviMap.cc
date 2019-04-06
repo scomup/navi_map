@@ -51,6 +51,18 @@ Cell *NaviMap::FindNearestCell(const Eigen::Vector3d &position, double *distance
   return nullptr;
 }
 
+double distCost(double d)
+{
+  double cost = d > 1.0 ? 0 : 100.;
+
+ return cost;
+}
+double AstarHeuristic(const Eigen::Vector3d current, const Eigen::Vector3d goal) 
+{
+    return (current - goal).norm();
+}
+
+
 bool NaviMap::FindPath(const Cell *start,
                        const Cell *goal,
                        std::vector<Eigen::Vector3d> &path)
@@ -67,7 +79,7 @@ bool NaviMap::FindPath(const Cell *start,
 
   CostTable cost_table;
 
-  cost_table[start->position] = 0;
+  cost_table[start->position] = distCost(start->dist) + AstarHeuristic(start->position,goal->position);
 
   std::set<std::pair<double, const Cell *>> front;
   front.insert(std::make_pair(cost_table[start->position], start));
@@ -87,7 +99,9 @@ bool NaviMap::FindPath(const Cell *start,
       if (cost_table.find(next->position) == cost_table.end())
         cost_table[next->position] = inf;
 
-      double weight = (next->position - cell->position).norm();
+
+      double weight = (next->position - cell->position).norm() + distCost(next->dist) + AstarHeuristic(next->position,goal->position);
+
       if (cost_table[next->position] > cost_table[cell->position] + weight)
       {
         auto m = std::make_pair(cost_table[next->position], next);
@@ -126,6 +140,10 @@ void NaviMap::setPath(CostTable &cost_table,
 
   double d = cost_table[goal->position];
 
+  for(auto& m : cost_table){
+    m.second -= AstarHeuristic(cellmap3d_[m.first]->position,  goal->position);
+  }
+
   while (c != start)
   {
     path.push_back(c->position);
@@ -151,8 +169,8 @@ void NaviMap::initKDtree()
 {
   assert(cellmap3d_.size() > 0);
   int dim = 3;
-  std::vector<double> targetData;
-  targetData.resize(cellmap3d_.size() * dim);
+  double* targetData = new double[ cellmap3d_.size() * dim ]; // allocated on heap - worse
+   
   int i = 0;
   for (auto &m : cellmap3d_)
   {
@@ -162,17 +180,12 @@ void NaviMap::initKDtree()
     targetData[i * dim + 2] = cell->position(2);
     i++;
   }
-  flann::Matrix<double> dataset(targetData.data(), cellmap3d_.size(), dim);
+  flann::Matrix<double> dataset(targetData, cellmap3d_.size(), dim);
   kdtree_ = flann::Index<flann::L2_Simple<double>>(
       dataset,
       flann::KDTreeSingleIndexParams());
   kdtree_.buildIndex();
-  std::cout<<cellmap3d_.size()<<std::endl;
 
-  for(int i = 0;i<cellmap3d_.size();i++){
-    kdtree_.getPoint(i);
-    std::cout<<i<<std::endl;
-  }
 }
 
 } // namespace GlobalPlan

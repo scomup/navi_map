@@ -14,6 +14,7 @@ MultiLevelGrid::MultiLevelGrid(const double ndt_voxel_resolution, const double g
 void MultiLevelGrid::setInput(const pcl::PointCloud<pcl::PointXYZ>::Ptr point_cloud)
 {
   cloud_ = point_cloud;
+  std::cout << "Compute covariance.." << std::endl;
   voxel_->setInput(point_cloud);
   std::cout << "Node classification.." << std::endl;
   NodeClassification();

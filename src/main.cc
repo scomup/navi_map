@@ -39,6 +39,7 @@
 
 
 pcl::PointCloud<pcl::PointXYZ>::Ptr cloud;
+GlobalPlan::NaviMap* navi_map;
 
 void cloud_cb(const sensor_msgs::PointCloud2ConstPtr &input)
 {
@@ -63,7 +64,7 @@ void cloud_cb(const sensor_msgs::PointCloud2ConstPtr &input)
     cloud = local_cloud;
 }
 
-pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZI>());
+
 
 bool createMarker(GlobalPlan::NDTVoxelNode *node, int rgb,
                   visualization_msgs::MarkerArray &marker_array)
@@ -129,6 +130,40 @@ bool createMarker(GlobalPlan::NDTVoxelNode *node, int rgb,
     marker_array.markers.push_back(marker);
     return true;
 }
+ros::Publisher plan_pub;
+
+void goalCB(const geometry_msgs::PoseStamped::ConstPtr &msg)
+{
+    double x = msg->pose.position.x;
+    double y = msg->pose.position.y;
+    double z = msg->pose.position.z;
+    Eigen::Vector3d goal(x, y, z);
+
+    auto s = navi_map->FindNearestCell(Eigen::Vector3d(0, -1.5, 0));
+    auto g = navi_map->FindNearestCell(goal);
+
+    std::vector<Eigen::Vector3d> path;
+
+    navi_map->FindPath(s, g, path);
+    
+    nav_msgs::Path path_msg;
+
+    path_msg.poses.resize(path.size());
+    path_msg.header.frame_id = "map";
+    path_msg.header.stamp = ros::Time::now();
+
+    int i = 0;
+    for (Eigen::Vector3d p : path)
+    {
+        geometry_msgs::PoseStamped pose;
+        pose.pose.position.x = p.x();
+        pose.pose.position.y = p.y();
+        pose.pose.position.z = p.z() + 0.3;
+        path_msg.poses[i++] = pose;
+    }
+    plan_pub.publish(path_msg);
+    
+}
 
 int main(int argc, char **argv)
 {
@@ -136,31 +171,36 @@ int main(int argc, char **argv)
     ros::NodeHandle nh;
 
     ros::Subscriber sub = nh.subscribe("/map3d", 1, cloud_cb);
+    plan_pub = nh.advertise<nav_msgs::Path>("global_plan", 1, true);
 
-    std::cout << "wait map3d topic\n";
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZI>());
+
+    std::cout << "Wait map3d topic..\n";
     while (cloud == nullptr && ros::ok())
     {
         std::this_thread::sleep_for(std::chrono::microseconds(100));
         ros::spinOnce();
     }
+    ros::Subscriber goal_sub_ = nh.subscribe("goal", 1, goalCB);
+
 
     visualization_msgs::MarkerArray marker_array;
 
-    GlobalPlan::NaviMap navi_map(0.8, 0.1);
-    navi_map.setInput(cloud);
-    auto traversable_node = navi_map.traversable_node();
+    navi_map = new GlobalPlan::NaviMap(0.8, 0.1);
+    navi_map->setInput(cloud);
+    auto traversable_node = navi_map->traversable_node();
     for (auto& n : traversable_node)
     {
         createMarker(n, 1, marker_array);
     }
 
-    auto obstacle_node = navi_map.obstacle_node();
+    auto obstacle_node = navi_map->obstacle_node();
     for (auto& n : obstacle_node)
     {
         createMarker(n, 0, marker_array);
     }
 
-    auto cellmap3d = navi_map.cellmap3d();
+    auto cellmap3d = navi_map->cellmap3d();
     
     for (auto& m : cellmap3d)
     {
@@ -174,30 +214,7 @@ int main(int argc, char **argv)
         cloud_map->push_back(p);
     }
 
-    auto s = navi_map.FindNearestCell(Eigen::Vector3d(0,-1.5,0));
-    auto g = navi_map.FindNearestCell(Eigen::Vector3d(0,15,3));
 
-    std::vector<Eigen::Vector3d> path;
-
-    navi_map.FindPath(s, g, path);
-    ros::Publisher plan_pub;
-    plan_pub = nh.advertise<nav_msgs::Path>("global_plan", 1, true);
-    nav_msgs::Path path_msg;
-
-    path_msg.poses.resize(path.size());
-    path_msg.header.frame_id = "map";
-    path_msg.header.stamp = ros::Time::now();
-
-    int i = 0;
-    for (Eigen::Vector3d p : path)
-    {
-        geometry_msgs::PoseStamped pose;
-        pose.pose.position.x = p.x();
-        pose.pose.position.y = p.y();
-        pose.pose.position.z = p.z()+0.3;
-        path_msg.poses[i++] = pose;
-    }
-    plan_pub.publish(path_msg);
 
     sensor_msgs::PointCloud2 output;
     pcl::toROSMsg(*cloud_map, output);
@@ -212,78 +229,5 @@ int main(int argc, char **argv)
 
     ros::spin();
 
-    /*
-    std::vector<Eigen::Vector3i> voxel_ids(cloud->points.size());
-
-    for (int i = 0; i < (int)cloud->points.size(); i++)
-    {
-        Eigen::Vector3i &vid = voxel_ids[i];
-        pcl::PointXYZ p = cloud->points[i];
-
-        vid(0) = static_cast<int>(floor(p.x / 0.1));
-        vid(1) = static_cast<int>(floor(p.y / 0.1));
-        vid(2) = static_cast<int>(floor(p.z / 0.1));
-    }
-    std::cout<<"1.."<<std::endl;
-
-    GlobalPlan::NDTVoxel<pcl::PointXYZ> voxel;//(voxel_ids, cloud);
-    voxel.setInput(voxel_ids, cloud);
-    std::cout<<"OK.."<<std::endl;
-
-    auto nodes = voxel.getNDTVoxelLevel(0);
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_map(new pcl::PointCloud<pcl::PointXYZ>());
-
-    for (auto n : nodes)
-    {
-        cloud_map->push_back(pcl::PointXYZ(n.centroid(0), n.centroid(1), n.centroid(2)));
-    }
-
-    sensor_msgs::PointCloud2 output;
-    pcl::toROSMsg(*cloud_map, output);
-    output.header.frame_id = "map";
-
-    auto cell_pub = nh.advertise<sensor_msgs::PointCloud2>("points", 100, true);
-    cell_pub.publish(output);
-        ros::spin();
-        */
-
-    //GlobalPlan::NaviMapVisualization map_visual(&navi_map);
-
-    /*
-    auto s = navi_map.FindNearestCell(Eigen::Vector3d(0,-1.5,0));
-    auto g = navi_map.FindNearestCell(Eigen::Vector3d(0,15,3));
-    std::vector<Eigen::Vector3d> path;
-    navi_map.FindPath(s, g, path);
-    ros::Publisher plan_pub;
-    plan_pub = nh.advertise<nav_msgs::Path>("global_plan", 1, true);
-    nav_msgs::Path path_msg;
-
-    path_msg.poses.resize(path.size());
-    path_msg.header.frame_id = "map";
-    path_msg.header.stamp = ros::Time::now();
-
-
-    //graph_->FindPath(start_idx, goal_idx, std::vector<uint> path);
-    int i = 0;
-    for (Eigen::Vector3d p : path)
-    {
-        geometry_msgs::PoseStamped pose;
-        pose.pose.position.x = p.x();
-        pose.pose.position.y = p.y();
-        pose.pose.position.z = p.z()+0.3;
-        path_msg.poses[i++] = pose;
-    }
-    plan_pub.publish(path_msg);
-
-    auto cell_pub = nh.advertise<sensor_msgs::PointCloud2>("points", 100, true);
-    cell_pub.publish(map_visual.createCellMarker());
-
-    ros::Publisher marker_pub = nh.advertise<visualization_msgs::MarkerArray>("marker", 1, true);
-    marker_pub.publish(map_visual.createCovarianceMarker());
-
-    std::cout<<"OK!"<<std::endl;
-
-    ros::spin();
-*/
     return 0;
 }

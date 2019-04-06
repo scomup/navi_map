@@ -25,7 +25,7 @@ struct Cell
 		neighbours[6] = nullptr;
 		neighbours[7] = nullptr;
 		untraversable = false;
-		dist = 10;
+		dist = 1.1;
 		
 	}
 	Eigen::Vector3d position;
